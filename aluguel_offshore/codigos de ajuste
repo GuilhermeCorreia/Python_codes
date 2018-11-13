@@ -1,0 +1,274 @@
+###########################################################################################################################################
+Ajuste distribuição
+###########################################################################################################################################                                                                             
+
+# Custos finais mês de março
+'''info_emails = pd.DataFrame({
+    'acc':['ms_cayman','ms_cayman','ms_cayman','ubs_cayman','ubs_cayman', 'int_c','int_c'],
+    'currency':['USD','GBP','MXN','USD','MXN','AUD','USD'],
+    'accrual_final':[-193547.92, -1.23, -410018.67,-32656.22,-747445.48,-2290.07,-2600.76]
+})'''
+
+# Custos finais mês de abril
+'''info_emails = pd.DataFrame({
+    'acc':['ms_cayman','ms_cayman','ms_cayman','ubs_cayman', 'int_c','int_c','int_c'],
+    'currency':['USD','GBP','MXN','MXN','AUD','USD','MXN'],
+    'accrual_final':[-152710.77,-1.07,-999326.27,-721247.90,-2492.32,-9901.02,-1482.73]
+})'''
+
+# Custos finais mês de maio
+'''info_emails = pd.DataFrame({
+    'acc':['ms_cayman','ms_cayman','ms_cayman','ms_cayman','ubs_cayman', 'int_c','int_c','int_c'],
+    'currency':['USD','EUR','GBP','MXN','MXN','AUD','USD','MXN'],
+    'accrual_final':[-149037.61,-467.13,-1.16,-982264.52,-1037265.09,-2797.75,-20443.32,-1663.57]
+})'''
+
+# Custos finais mês de junho
+'''info_emails = pd.DataFrame({
+    'acc':['ms_cayman','ms_cayman','ms_cayman','ms_cayman','ubs_cayman','int_c','int_c','int_c'],
+    'currency':['EUR','GBP','MXN','USD','MXN','MXN','AUD','USD'],
+    'accrual_final':[-713.01,-1.36,-1359526.18,-151788.04,-937161.96,-1642.98,-2642.41,-50291.97]
+})'''
+
+info_emails = pd.DataFrame({
+    'acc':['ms_cayman','ms_cayman','ms_cayman','ms_cayman','ubs_cayman','int_c','int_c','int_c'],
+    'currency':['USD','EUR','GBP','MXN','MXN','AUD','USD','MXN'],
+    'accrual_final':[-151302.90,-4.18,-1.20,-1774308.52,-993668.89,-2588.31,-23637.36,-289.12]
+})
+
+
+
+info_emails
+
+
+
+ajuste = pd.merge(abertura_batidos.groupby(by=['acc', 'currency']).sum().reset_index(),\
+                                              info_emails, on=['acc','currency'], how='left')
+
+check_10 = ajuste[ajuste['accrual_final_y'].isnull()==True].shape[0]
+print('%s linhas foram dropadas da base, porque os valores não foram descontados no conta.' %check_10)
+
+ajuste['multiplicador'] = ajuste['accrual_final_y']/ajuste['accrual_final_x']
+
+ajuste = ajuste.rename(columns={
+    'accrual_final_x':'accrual_final_gerado',
+    'accrual_final_y':'accrual_final_email' 
+}).fillna(0)
+
+ajuste
+
+ajuste = ajuste.drop(['quantidade_book','accrual_final_gerado', 'accrual_final_email'], axis=1)
+
+
+
+abertura_batidos_ajustado = pd.merge(abertura_batidos, ajuste, on=['acc','currency'], how='left')
+
+check_11 = abertura_batidos_ajustado.shape[0]-abertura_batidos.shape[0]
+if check_11 != 0:
+    print ('%s linhas foram duplicadas durante o ajuste. Verificar!!')
+
+abertura_batidos_ajustado['accrual'] = abertura_batidos_ajustado['accrual_final']*abertura_batidos_ajustado['multiplicador']
+
+abertura_batidos_ajustado = abertura_batidos_ajustado.drop(['accrual_final','multiplicador'], axis=1)
+
+check_12 = abertura_batidos_ajustado.shape[0]-abertura_batidos_ajustado[abertura_batidos_ajustado['accrual']!=0].shape[0]
+abertura_batidos_ajustado = abertura_batidos_ajustado[abertura_batidos_ajustado['accrual']!=0]
+print('%s tickers_book foram dropados da abertura porque suas contas não faziam sentido com o que foi cobrado' %check_12)
+
+abertura_batidos_ajustado_neg = abertura_batidos_ajustado[abertura_batidos_ajustado['accrual']<0]
+
+abertura_batidos_ajustado_posi = abertura_batidos_ajustado[abertura_batidos_ajustado['accrual']>=0]
+
+ajuste_neg_grouped = abertura_batidos_ajustado_neg.groupby(by=['acc','currency']).sum().reset_index()
+
+
+
+check_13 = abertura_batidos_ajustado_neg.shape[0]-\
+                        pd.merge(abertura_batidos_ajustado_neg, ajuste_neg_grouped, on=['acc','currency'], how='left').shape[0]
+if check_13 != 0:
+    print ('%s linhas foram duplicadas durante o ajuste dos números negativos. Verificar!!' %check_13)
+
+abertura_batidos_ajustado_neg = pd.merge(abertura_batidos_ajustado_neg, ajuste_neg_grouped, on=['acc','currency'], how='left')
+
+abertura_batidos_ajustado_neg['pct'] = abertura_batidos_ajustado_neg['accrual_x']/abertura_batidos_ajustado_neg['accrual_y']
+
+check_14 = abertura_batidos_ajustado_neg.groupby(by=['acc','currency']).sum().reset_index()
+check_14 = check_14[np.isclose(check_14['pct'], 1)==False].shape[0]
+if check_14 != 0:
+    print ('O batimento não foi feito!!! %s contas somam valor diferente a 100\%')
+
+abertura_batidos_ajustado_posi = abertura_batidos_ajustado_posi.groupby(by=['acc','currency']).sum().reset_index()
+
+check_15 = abertura_batidos_ajustado_neg.shape[0]-\
+                                    pd.merge(abertura_batidos_ajustado_neg, abertura_batidos_ajustado_posi, \
+                                                         on=['acc','currency'], how='left').shape[0]
+if check_15 != 0:
+    print ('%s linhas foram duplicadas durante o ajuste de quantidades positivas!!!'%check_15)
+
+abertura_batidos_ajustado_neg = pd.merge(abertura_batidos_ajustado_neg, abertura_batidos_ajustado_posi, \
+                                         on=['acc','currency'], how='left').fillna(0)
+
+abertura_batidos_ajustado_neg['distrib_positives'] = abertura_batidos_ajustado_neg['pct']\
+                                                        *abertura_batidos_ajustado_neg['accrual']
+
+abertura_batidos_ajustado_neg['accrual_final'] = abertura_batidos_ajustado_neg['accrual_x']+\
+                                                        abertura_batidos_ajustado_neg['distrib_positives']
+
+abertura_batidos_ajustado = abertura_batidos_ajustado_neg.drop(['accrual_x', 'accrual_y', 'pct', 'accrual', 
+                                                          'distrib_positives'], axis=1)
+
+abertura_batidos_consol = abertura_batidos_ajustado.groupby(['acc', 'book', 'currency'])\
+                                        .sum().reset_index().drop(['quantidade_book','quantidade_book_y'], axis=1)\
+    .rename(columns={'quantidade_book_x':'quantidade_book'})
+
+check_16 = pd.merge(abertura_batidos_ajustado.groupby(by=['acc', 'currency']).sum().reset_index(), \
+                                    info_emails, on=['acc','currency'],how='left')
+check_16['pct'] = check_16['accrual_final_x']/check_16['accrual_final_y']
+check_16 = check_16[np.isclose(check_16['pct'], 1)==False].shape[0]
+if check_16 != 0:
+    print ('O batimento não foi feito!!! %s contas somam valor diferente a 100\%')
+
+
+
+
+
+abertura_batidos_ajustado[abertura_batidos_ajustado.book=='LOCAL_ADR_INTC'][['conta','agent','data_ref','quantidade_book_x',
+                                                                             'book', 'ticker','currency','accrual_final']].to_excel('LOCAL_ADR_INTC.xlsx')
+                                                                             
+                                                                             
+                                                                             
+                                                                             
+                                                                       
+###########################################################################################################################################
+Parte de WM
+###########################################################################################################################################                                                                             
+                                                                             
+                                                                             
+                                                                             
+                                                                             
+                                                                             
+abertura_batidos_consol_wm = pd.merge(batimento_wm_distrib, ajuste, on=['acc','currency'], how='left')
+
+abertura_batidos_consol_wm['accrual'] = abertura_batidos_consol_wm['accrual_final']*abertura_batidos_consol_wm['multiplicador']
+
+
+
+abertura_batidos_consol_wm = abertura_batidos_consol_wm.drop(['accrual_final', 'multiplicador','accrual_n_distrib'], axis=1)
+
+abertura_batidos_consol_wm = abertura_batidos_consol_wm[abertura_batidos_consol_wm['accrual']!=0]
+
+total_wm = abertura_batidos_consol_wm.groupby(by=['acc','book','currency']).sum().reset_index()
+
+total_wm_calypso = abertura_batidos_consol[(abertura_batidos_consol['book'].str.contains('CLIENTS'))|\
+                       (abertura_batidos_consol['book'].str.contains('PRIVATE'))].reset_index(drop=True)\
+                                                                .groupby(by=['book', 'currency']).sum().reset_index()
+
+total_wm_n_distrib = pd.merge(total_wm, total_wm_calypso, on=['book','currency'], how='left').fillna(0)
+
+total_wm_n_distrib['accrual_final_n_distrib'] = total_wm_n_distrib['accrual_final']-total_wm_n_distrib['accrual']
+
+total_wm_n_distrib = total_wm_n_distrib.drop(['accrual', 'accrual_final', 'quantidade_book_x','quantidade_book_y',
+                                              'conta_pb'], axis=1)
+
+abertura_batidos_consol_wm = abertura_batidos_consol_wm.groupby(by=['book','conta','currency']).sum().reset_index()\
+                                                .drop(['conta_pb','quantidade_book'], axis=1)
+
+total_wm_n_distrib['conta'] = 'OUTROS'
+total_wm_n_distrib = total_wm_n_distrib.rename(columns={'accrual_final_n_distrib':'accrual'})
+
+abertura_batidos_consol_wm = abertura_batidos_consol_wm.groupby(by=['conta', 'book','currency']).sum().reset_index()
+abertura_batidos_consol_wm['acc'] = 'ubs_cayman'
+
+abertura_batidos_consol_wm = pd.concat([total_wm_n_distrib, abertura_batidos_consol_wm], axis=0)
+
+abertura_batidos_consol_wm
+
+
+
+
+
+abertura_batidos_consol_wm = abertura_batidos_consol_wm[['acc','conta','book','currency','accrual']]
+
+abertura_batidos_consol = abertura_batidos_consol[['acc', 'book', 'currency', 'accrual_final']]                                                                             
+                                                                             
+                                                                             
+###########################################################################################################################################
+WM OLD!!!
+###########################################################################################################################################                                                                             
+pb_wm = abertura[(abertura['book'].str.contains('PRIVATE'))\
+                 |(abertura['book'].str.contains('CLIENT'))].copy()
+
+calypso_wm, calypso_wm_grouped = ImportAluguelOffshore(pasta,data_inicio,data_final).ajusta_calypso_wm(pb_wm, bdwm)
+
+
+
+
+
+batimento_wm = pd.merge(pb_wm, calypso_wm_grouped, on=['data_ref', 'book', 'ticker', 'currency'], how='left')\
+                                                                                    .drop('year', axis=1)
+
+batimento_wm_sobra_destino = batimento_wm[batimento_wm['quantidade'].isnull()==True].copy()
+if batimento_wm_sobra_destino.shape[0]!=0:
+    print ('Durante o batimento de WM, %s trades ficaram como sobra de destino!!' %batimento_wm_sobra_destino.shape[0])
+    batimento_wm_sobra_destino['status'] = 'n_batido'
+
+batimento_wm = batimento_wm[batimento_wm['quantidade'].isnull()==False].copy()
+batimento_wm_batidos = batimento_wm[batimento_wm['quantidade_book']==batimento_wm['quantidade']].copy()
+
+batimento_wm_batidos['status'] = 'batido'
+
+batimento_wm_divergentes = batimento_wm[batimento_wm['quantidade_book']!=batimento_wm['quantidade']].copy()
+if batimento_wm_divergentes.shape[0]!=0:
+    print ('Durante o batimento de WM, %s trades ficaram com quantidade divergente!!' %batimento_wm_divergentes.shape[0])
+
+batimento_wm_divergentes['status'] = 'divergente'
+
+batimento_wm = pd.concat([batimento_wm_batidos, batimento_wm_divergentes], axis=0)
+
+batimento_wm['id'] = range(0, batimento_wm.shape[0])
+
+
+
+batimento_wm_distrib = pd.merge(calypso_wm, batimento_wm, on=['data_ref', 'book', 'ticker', 'currency'], how='left')\
+[['conta_pb_x', 'agent_x', 'data_ref', 'quantidade_x', 'book', 'ticker', 'currency', 'cliente','quantidade_book', 
+  'acc', 'status','accrual_final', 'id']].rename(columns={
+    'quantidade_book':'quantidade_ticker',
+    'quantidade_x':'quantidade_book',
+    'conta_pb_x':'conta_pb',
+    'agent_x':'agent',
+    'cliente':'conta'   
+})
+check_18 = batimento_wm_distrib.shape[0]-calypso_wm.shape[0]
+if check_18!=0:
+    print ('%s linhas foram duplicadas durante o ajuste de WM' %check_18)
+
+batimento_wm_sobra_origem = batimento_wm[~batimento_wm_distrib['id'].isin(batimento_wm['id'].drop_duplicates())].copy()
+
+batimento_wm_sobra_origem
+
+if batimento_wm_sobra_origem.shape[0]!=0:
+    pct_batimento_wm_sobra_origem = (batimento_wm_sobra_origem.shape[0]/batimento_wm.shape[0])*100
+    print ('Durante o batimento de WM, %s trades não foram distribuídos!!' %batimento_wm_sobra_origem.shape[0])
+    print ('    Valor corresponde a %s pct dos trades' %pct_batimento_wm_sobra_origem)
+
+
+
+batimento_wm_distrib = batimento_wm_distrib.drop('id', axis=1)
+
+n_batimento_wm_distrib = batimento_wm_distrib[batimento_wm_distrib['quantidade_ticker'].isnull()==True]\
+                                                                .drop(['quantidade_ticker'], axis=1)
+
+batimento_wm_distrib = batimento_wm_distrib[batimento_wm_distrib['quantidade_ticker'].isnull()==False]
+
+batimento_wm_distrib['pct'] = batimento_wm_distrib['quantidade_book']/batimento_wm_distrib['quantidade_ticker']
+
+batimento_wm_distrib['accrual'] = batimento_wm_distrib['accrual_final']*batimento_wm_distrib['pct']
+
+batimento_wm_distrib = batimento_wm_distrib.drop(['quantidade_ticker', 'pct'], axis=1).rename(columns = {
+'accrual_final':'accrual_n_distrib','accrual':'accrual_final'})                                                                             
+                                                                             
+                                                                             
+                                                                             
+                                                                             
+                                                                             
+                                                                             
